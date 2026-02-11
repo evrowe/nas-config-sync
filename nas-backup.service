@@ -1,0 +1,9 @@
+[Unit]
+Description=NAS Backup to Google Drive
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/nas-backup.env
+ExecStart=/path/to/nas-backup.sh
