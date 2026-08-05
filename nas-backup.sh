@@ -1,8 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-LOG_FILE="$HOME/nas-backup.log"
 LOCK_FILE="/tmp/nas-backup.lock"
+
+# systemd does not set HOME for system services, so rclone cannot find its
+# config at the usual ~/.config path. Point at it explicitly.
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/root/.config/rclone/rclone.conf}"
 
 if [[ -z "${NAS_CONFIG_DIR:-}" || -z "${GDRIVE_DEST:-}" ]]; then
     echo "Error: NAS_CONFIG_DIR and GDRIVE_DEST must be set as environment variables" >&2
@@ -22,12 +25,18 @@ if [[ ! -d "$NAS_CONFIG_DIR" ]]; then
     exit 1
 fi
 
+if [[ ! -f "$RCLONE_CONFIG" ]]; then
+    echo "Error: rclone config not found: $RCLONE_CONFIG" >&2
+    echo "Set RCLONE_CONFIG in /etc/nas-backup.env to the correct path" >&2
+    exit 1
+fi
+
 log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOG_FILE"
+    echo "ERROR: $*" >&2
 }
 
 notify_error() {
-    if [[ -n "$PUSHOVER_TOKEN" && -n "$PUSHOVER_USER" ]]; then
+    if [[ -n "${PUSHOVER_TOKEN:-}" && -n "${PUSHOVER_USER:-}" ]]; then
         curl -s -o /dev/null \
             --form-string "token=$PUSHOVER_TOKEN" \
             --form-string "user=$PUSHOVER_USER" \
@@ -46,7 +55,7 @@ fi
 BACKUP_FILE="/tmp/$(date '+%Y-%m-%d')_backup.zip"
 trap 'rm -f "$BACKUP_FILE"' EXIT
 
-if ! zip -r -q "$BACKUP_FILE" "$NAS_CONFIG_DIR" 2>> "$LOG_FILE"; then
+if ! zip -r -q "$BACKUP_FILE" "$NAS_CONFIG_DIR"; then
     log_error "Archive creation failed: $NAS_CONFIG_DIR -> $BACKUP_FILE"
     notify_error
     exit 1
@@ -54,14 +63,14 @@ fi
 
 BACKUP_NAME="$(basename "$BACKUP_FILE")"
 
-if ! rclone copyto "$BACKUP_FILE" "$GDRIVE_DEST/daily/$BACKUP_NAME" 2>> "$LOG_FILE"; then
+if ! rclone copyto "$BACKUP_FILE" "$GDRIVE_DEST/daily/$BACKUP_NAME"; then
     log_error "Upload failed: $BACKUP_FILE -> $GDRIVE_DEST/daily/"
     notify_error
     exit 1
 fi
 
 if [[ "$(date +%u)" -eq 7 ]]; then
-    if ! rclone copyto "$BACKUP_FILE" "$GDRIVE_DEST/weekly/$BACKUP_NAME" 2>> "$LOG_FILE"; then
+    if ! rclone copyto "$BACKUP_FILE" "$GDRIVE_DEST/weekly/$BACKUP_NAME"; then
         log_error "Upload failed: $BACKUP_FILE -> $GDRIVE_DEST/weekly/"
         notify_error
         exit 1
@@ -69,7 +78,7 @@ if [[ "$(date +%u)" -eq 7 ]]; then
 fi
 
 if [[ "$(date +%d)" == "01" ]]; then
-    if ! rclone copyto "$BACKUP_FILE" "$GDRIVE_DEST/monthly/$BACKUP_NAME" 2>> "$LOG_FILE"; then
+    if ! rclone copyto "$BACKUP_FILE" "$GDRIVE_DEST/monthly/$BACKUP_NAME"; then
         log_error "Upload failed: $BACKUP_FILE -> $GDRIVE_DEST/monthly/"
         notify_error
         exit 1
@@ -77,5 +86,5 @@ if [[ "$(date +%d)" == "01" ]]; then
 fi
 
 # Prune old backups
-rclone delete --min-age 7d "$GDRIVE_DEST/daily/" 2>> "$LOG_FILE" || log_error "Prune failed: daily/"
-rclone delete --min-age 28d "$GDRIVE_DEST/weekly/" 2>> "$LOG_FILE" || log_error "Prune failed: weekly/"
+rclone delete --min-age 7d "$GDRIVE_DEST/daily/" || log_error "Prune failed: daily/"
+rclone delete --min-age 28d "$GDRIVE_DEST/weekly/" || log_error "Prune failed: weekly/"

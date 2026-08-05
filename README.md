@@ -23,9 +23,10 @@ All configuration is supplied via environment variables, sourced from `/etc/nas-
    - `NAS_CONFIG_DIR` — absolute path to the directory to back up
    - `GDRIVE_DEST` — rclone destination (e.g. `gdrive:backups`)
 
-3. Optional variables (for Pushover failure alerts):
-   - `PUSHOVER_TOKEN`
-   - `PUSHOVER_USER`
+3. Optional variables:
+   - `RCLONE_CONFIG` — path to `rclone.conf` (defaults to `/root/.config/rclone/rclone.conf`). The service runs as root and systemd does not set `HOME`, so rclone cannot locate its config by the usual `~/.config` path.
+   - `PUSHOVER_TOKEN` — for Pushover failure alerts
+   - `PUSHOVER_USER` — for Pushover failure alerts
 
 ## Deployment
 
@@ -34,7 +35,7 @@ All configuration is supplied via environment variables, sourced from `/etc/nas-
 sudo cp nas-backup.sh /usr/local/bin/nas-backup.sh
 sudo chmod 755 /usr/local/bin/nas-backup.sh
 
-# Install the systemd units (update ExecStart path in the service if needed)
+# Install the systemd units (ExecStart expects /usr/local/bin/nas-backup.sh)
 sudo cp nas-backup.service nas-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 
@@ -52,7 +53,12 @@ sudo systemctl enable --now nas-backup.timer
 
 ## Logs
 
-Errors are written to `~/nas-backup.log`.
+Errors go to stderr and are captured by journald:
+
+```sh
+journalctl -u nas-backup -n 50
+journalctl -u nas-backup -f
+```
 
 ## Manual Run
 

@@ -6,4 +6,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/nas-backup.env
-ExecStart=/path/to/nas-backup.sh
+ExecStart=/usr/local/bin/nas-backup.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nas-backup
